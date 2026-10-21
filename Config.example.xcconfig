@@ -1,0 +1,12 @@
+// Copy to Config.local.xcconfig and replace the application-specific values.
+SPOTIFY_CLIENT_ID = REPLACE_WITH_SPOTIFY_CLIENT_ID
+SPOTIFY_CALLBACK_SCHEME = carlyrics
+URL_SLASH = /
+SPOTIFY_REDIRECT_URI = $(SPOTIFY_CALLBACK_SCHEME):$(URL_SLASH)$(URL_SLASH)callback
+APP_BUNDLE_IDENTIFIER = com.example.carlyrics
+WIDGET_BUNDLE_IDENTIFIER = com.example.carlyrics.activity
+// Reserved for future shared storage. No app-group entitlement is enabled.
+APP_GROUP_IDENTIFIER = group.com.example.carlyrics
+DEVELOPMENT_TEAM = REPLACE_WITH_APPLE_TEAM_ID
+// Written Spotify permission and lyric rights must be resolved before enabling.
+SPOTIFY_LYRICS_ENABLED = NO
