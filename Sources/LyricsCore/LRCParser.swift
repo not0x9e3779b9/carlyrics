@@ -32,7 +32,7 @@ public struct LRCParser: Sendable {
                 if let timestamp = Self.timestamp(token) {
                     timestamps.append(timestamp)
                 } else if let colon = token.firstIndex(of: ":"),
-                          token.first?.isNumber != true {
+                          token[..<colon].trimmingCharacters(in: .whitespaces).first?.isLetter == true {
                     let key = token[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
                     let value = token[token.index(after: colon)...].trimmingCharacters(in: .whitespaces)
                     recognizedMetadata = true

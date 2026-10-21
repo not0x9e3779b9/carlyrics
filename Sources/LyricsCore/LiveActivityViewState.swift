@@ -23,10 +23,10 @@ public struct LiveActivityViewState: Codable, Equatable, Sendable {
         let visible = privacy == .showLyrics
         previousLine = visible ? Self.clipped(frame.previous?.text ?? "", to: 128) : ""
         let display: String
-        if let current = frame.current?.text, !current.isEmpty {
-            display = current
+        if let current = frame.current?.text {
+            display = current.isEmpty ? "Instrumental" : current
         } else {
-            display = frame.hasLyrics ? "Instrumental" : "No lyrics imported"
+            display = frame.hasLyrics ? "Waiting for the first line" : "No lyrics imported"
         }
         currentLine = visible ? Self.clipped(display, to: 128) : "Lyrics hidden"
         nextLine = visible ? Self.clipped(frame.next?.text ?? "", to: 128) : ""

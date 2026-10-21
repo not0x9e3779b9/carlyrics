@@ -89,6 +89,14 @@ final class LRCParserTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(document.warnings.count, 3)
     }
 
+    func testSignedMinuteTagsAreDiagnosedWithoutBecomingMetadata() {
+        let document = parser.parse("[-1:03]Invalid negative minute\n[+1:03]Invalid signed minute\n[ -2:04 ][00:03]Recovered\n[custom-key:Retained metadata]")
+        XCTAssertEqual(document.warnings.map(\.lineNumber), [1, 2, 3])
+        XCTAssertEqual(document.lines.map(\.text), ["Recovered"])
+        XCTAssertEqual(document.lines.map(\.timestamp), [3])
+        XCTAssertEqual(document.metadata.additional, ["custom-key": "Retained metadata"])
+    }
+
     func testEmptyAndWhitespaceOnlyFiles() {
         for text in ["", " \r\n\t\n", "\u{FEFF}"] {
             let document = parser.parse(text)

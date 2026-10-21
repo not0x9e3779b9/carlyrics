@@ -75,6 +75,19 @@ final class ProviderAndPresentationTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(state.currentLine, "Instrumental")
     }
 
+    func testViewStateLabelsPlaybackBeforeFirstLyric() {
+        var engine = SynchronizationEngine()
+        engine.update(snapshot: .init(track: SyntheticLyrics.demoTrack, position: 1, isPlaying: false),
+                      lyrics: SyntheticLyrics.demoDocument)
+        let beforeFirst = engine.frame()
+        XCTAssertNil(beforeFirst.current)
+        XCTAssertNotNil(beforeFirst.next)
+        let state = LiveActivityViewState(track: SyntheticLyrics.demoTrack, frame: beforeFirst)
+        XCTAssertEqual(state.currentLine, "Waiting for the first line")
+        XCTAssertEqual(state.nextLine, SyntheticLyrics.demoDocument.lines.first?.text)
+        XCTAssertTrue(state.hasLyrics)
+    }
+
     func testViewStateLabelsMissingLyrics() {
         let missing = LyricFrame(position: 0, lyricPosition: 0, previous: nil, current: nil, next: nil, isPlaying: false, hasLyrics: false)
         let state = LiveActivityViewState(track: nil, frame: missing)
