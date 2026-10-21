@@ -211,6 +211,10 @@ public final class LiveActivityService: ObservableObject {
                 switch state {
                 case .active, .stale:
                     self?.isActive = true
+                case .pending:
+                    // Scheduled activities remain observed until the system
+                    // starts them; they have no active presentation yet.
+                    self?.isActive = false
                 case .ended, .dismissed:
                     self?.detach()
                     await self?.serverUpdateSink?.activityDidStop(id: session.id)

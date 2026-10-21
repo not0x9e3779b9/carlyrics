@@ -4,6 +4,11 @@ import FoundationNetworking
 #endif
 
 public actor SpotifyAuthManager {
+    struct PlaybackAuthorization: Sendable {
+        let token: String
+        let revision: Int
+    }
+
     public private(set) var state: SpotifyAuthState = .disconnected
     /// A transient network or rate-limit failure does not discard the saved session.
     public var hasCredentials: Bool { credentials != nil }
@@ -38,6 +43,8 @@ public actor SpotifyAuthManager {
     public func restore() async throws {
         try configuration.validate()
         invalidatePendingRequests()
+        credentials = nil
+        state = .disconnected
         let expectedGeneration = generation
         if let storageTask { _ = try? await storageTask.value }
         let stored: SpotifyCredentials?
@@ -107,6 +114,8 @@ public actor SpotifyAuthManager {
             resetTokenBackoff()
             try await persist(result)
             guard generation == expectedGeneration else { throw SpotifyFailure.requestCancelled }
+            // Credentials captured while the browser was open belong to the previous session.
+            invalidatePendingRequests()
             credentials = result
             state = .connected(expiresAt: result.expiresAt)
         } catch {
@@ -148,8 +157,21 @@ public actor SpotifyAuthManager {
         return try await task.value.accessToken
     }
 
-    /// Called after a refreshed access token is still rejected by the playback endpoint.
-    func invalidateCredentials() async throws {
+    func playbackAuthorization(forceRefresh: Bool = false, expectedRevision: Int? = nil) async throws -> PlaybackAuthorization {
+        if let expectedRevision { try requirePlaybackRevision(expectedRevision) }
+        let revision = generation
+        let token = try await validAccessToken(forceRefresh: forceRefresh)
+        try requirePlaybackRevision(revision)
+        return PlaybackAuthorization(token: token, revision: revision)
+    }
+
+    func requirePlaybackRevision(_ revision: Int) throws {
+        guard generation == revision, credentials != nil else { throw SpotifyFailure.requestCancelled }
+    }
+
+    /// A rejected request from an older account must never remove a newer session.
+    func invalidateCredentials(expectedRevision: Int) async throws {
+        try requirePlaybackRevision(expectedRevision)
         invalidatePendingRequests()
         credentials = nil
         state = .requiresAuthorization

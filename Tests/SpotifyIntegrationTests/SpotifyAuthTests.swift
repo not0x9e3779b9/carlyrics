@@ -103,11 +103,13 @@ final class SpotifyAuthTests: XCTestCase, @unchecked Sendable {
         } catch { XCTAssertEqual(error as? SpotifyFailure, .invalidCallback) }
     }
 
-    func testUnexpiredStoredCredentialsAreRestoredWithoutNetwork() async throws {
+    func testRestoredCredentialsRemainUsableAfterCancellingAuthorizationWithoutNetwork() async throws {
         let expected = generatedCredentials()
         let transport = StubTransport([])
         let auth = SpotifyAuthManager(configuration: testConfiguration, store: MemoryTokenStore(expected), transport: transport, now: { testDate })
         try await auth.restore()
+        _ = try await auth.beginAuthorization()
+        await auth.cancelAuthorization()
         let actual = try await auth.validAccessToken()
         XCTAssertEqual(actual, expected.accessToken)
         let requests = await transport.requests
@@ -128,6 +130,27 @@ final class SpotifyAuthTests: XCTestCase, @unchecked Sendable {
         let body = String(data: requests[0].httpBody!, encoding: .utf8)!
         XCTAssertTrue(body.contains("grant_type=refresh_token"))
         XCTAssertTrue(body.contains("client_id=development-client"))
+    }
+
+    func testSuspendedRestoreCannotAuthorizePlaybackWithPreviousCredentials() async throws {
+        let oldCredentials = generatedCredentials()
+        let replacement = generatedCredentials()
+        let store = SuspendedLoadTokenStore(oldCredentials)
+        let auth = SpotifyAuthManager(configuration: testConfiguration, store: store, now: { testDate })
+        try await auth.restore()
+        let previousAuthorization = try await auth.playbackAuthorization()
+        await store.suspendNextLoad(replacement: replacement)
+        let restoring = Task { try await auth.restore() }
+        await store.waitForLoad()
+        do { _ = try await auth.playbackAuthorization(); XCTFail("Previous credentials were usable during restoration") }
+        catch { XCTAssertEqual(error as? SpotifyFailure, .requiresAuthorization) }
+        do { try await auth.requirePlaybackRevision(previousAuthorization.revision); XCTFail("Previous session revision survived restoration") }
+        catch { XCTAssertEqual(error as? SpotifyFailure, .requestCancelled) }
+        await store.releaseLoad()
+        try await restoring.value
+        let restoredAuthorization = try await auth.playbackAuthorization()
+        XCTAssertEqual(restoredAuthorization.token, replacement.accessToken)
+        XCTAssertNotEqual(restoredAuthorization.revision, previousAuthorization.revision)
     }
 
     func testConcurrentRefreshIsCoalescedAndReplacementRefreshTokenIsPersisted() async throws {

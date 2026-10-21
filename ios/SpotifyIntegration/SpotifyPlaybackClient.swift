@@ -87,13 +87,19 @@ public struct SpotifyPlaybackResponse: Decodable, Sendable {
 
 /// Reads metadata only. Connecting Spotify playback to timed lyrics requires separate policy approval.
 public actor SpotifyPlaybackClient: PlaybackStateClient {
+    private struct PlaybackRequest {
+        let id: UUID
+        let revision: Int
+        let task: Task<PlaybackSnapshot, Error>
+    }
+
     private let authentication: SpotifyAuthManager
     private let transport: any HTTPTransport
     private let now: @Sendable () -> Date
     private var nextRequestAt: Date?
     private var rateLimited = false
     private var transientFailureCount = 0
-    private var inFlight: Task<PlaybackSnapshot, Error>?
+    private var inFlight: PlaybackRequest?
 
     public init(authentication: SpotifyAuthManager, transport: any HTTPTransport = URLSessionTransport(),
                 now: @escaping @Sendable () -> Date = { Date() }) {
@@ -103,33 +109,43 @@ public actor SpotifyPlaybackClient: PlaybackStateClient {
     }
 
     public func playbackState() async throws -> PlaybackSnapshot {
-        if let inFlight { return try await inFlight.value }
+        let authorization = try await authentication.playbackAuthorization()
+        if let inFlight {
+            if inFlight.revision == authorization.revision { return try await inFlight.task.value }
+            // An older actor call may resume after a newer session already started its request.
+            guard inFlight.revision < authorization.revision else { throw SpotifyFailure.requestCancelled }
+            inFlight.task.cancel()
+            self.inFlight = nil
+        }
         if let nextRequestAt, nextRequestAt > now() {
             let delay = nextRequestAt.timeIntervalSince(now())
             throw rateLimited ? SpotifyFailure.rateLimited(retryAfter: delay) : SpotifyFailure.backingOff(retryAfter: delay)
         }
-        let task = Task { try await self.fetchPlayback() }
-        inFlight = task
+        let id = UUID()
+        let task = Task { try await self.fetchPlayback(authorization: authorization, requestID: id) }
+        inFlight = PlaybackRequest(id: id, revision: authorization.revision, task: task)
         return try await task.value
     }
 
-    private func fetchPlayback() async throws -> PlaybackSnapshot {
-        defer { inFlight = nil }
+    private func fetchPlayback(authorization: SpotifyAuthManager.PlaybackAuthorization, requestID: UUID) async throws -> PlaybackSnapshot {
+        defer { if inFlight?.id == requestID { inFlight = nil } }
+        var invalidatedSession = false
         do {
-            var token = try await authentication.validAccessToken()
-            var response = try await requestPlayback(token: token)
+            try await authentication.requirePlaybackRevision(authorization.revision)
+            var response = try await requestPlayback(token: authorization.token)
+            try await authentication.requirePlaybackRevision(authorization.revision)
             if response.statusCode == 401 {
-                token = try await authentication.validAccessToken(forceRefresh: true)
-                response = try await requestPlayback(token: token)
+                let refreshed = try await authentication.playbackAuthorization(forceRefresh: true, expectedRevision: authorization.revision)
+                response = try await requestPlayback(token: refreshed.token)
+                try await authentication.requirePlaybackRevision(authorization.revision)
                 if response.statusCode == 401 {
-                    try await authentication.invalidateCredentials()
+                    try await authentication.invalidateCredentials(expectedRevision: authorization.revision)
+                    invalidatedSession = true
                     throw SpotifyFailure.credentialsRevoked
                 }
             }
             if response.statusCode == 429 {
                 let delay = response.retryDelay(now: now())
-                nextRequestAt = now().addingTimeInterval(delay)
-                rateLimited = true
                 throw SpotifyFailure.rateLimited(retryAfter: delay)
             }
             if response.statusCode == 403 { throw SpotifyFailure.authorizationDenied }
@@ -143,12 +159,19 @@ public actor SpotifyPlaybackClient: PlaybackStateClient {
             } else {
                 result = try SpotifyPlaybackResponse.decode(response.data, observedAt: now())
             }
+            try await authentication.requirePlaybackRevision(authorization.revision)
+            guard inFlight?.id == requestID else { throw SpotifyFailure.requestCancelled }
             transientFailureCount = 0
             nextRequestAt = nil
             rateLimited = false
             return result
         } catch {
             let failure = sanitizedFailure(error)
+            // Revocation above intentionally advances the revision; retain that diagnostic.
+            if !invalidatedSession && failure != .credentialsRevoked {
+                try await authentication.requirePlaybackRevision(authorization.revision)
+            }
+            guard inFlight?.id == requestID else { throw SpotifyFailure.requestCancelled }
             switch failure {
             case .networkUnavailable, .serviceUnavailable(statusCode: 500...599):
                 transientFailureCount = min(transientFailureCount + 1, 6)

@@ -32,6 +32,45 @@ actor MemoryTokenStore: TokenStore {
     func failStorage() { shouldFail = true }
 }
 
+actor SuspendedLoadTokenStore: TokenStore {
+    private var value: SpotifyCredentials?
+    private var holdLoad = false
+    private var loadContinuation: CheckedContinuation<Void, Never>?
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(_ value: SpotifyCredentials) { self.value = value }
+
+    func load() async throws -> SpotifyCredentials? {
+        if holdLoad {
+            await withCheckedContinuation { continuation in
+                loadContinuation = continuation
+                for waiter in startWaiters { waiter.resume() }
+                startWaiters.removeAll()
+            }
+        }
+        return value
+    }
+
+    func save(_ credentials: SpotifyCredentials) { value = credentials }
+    func delete() { value = nil }
+
+    func suspendNextLoad(replacement: SpotifyCredentials) {
+        value = replacement
+        holdLoad = true
+    }
+
+    func waitForLoad() async {
+        if loadContinuation != nil { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func releaseLoad() {
+        holdLoad = false
+        loadContinuation?.resume()
+        loadContinuation = nil
+    }
+}
+
 actor StubTransport: HTTPTransport {
     enum Step: Sendable {
         case response(HTTPResponse)
@@ -79,6 +118,30 @@ actor ControlledTransport: HTTPTransport {
         releasedResponse = response
         responseContinuation?.resume(returning: response)
         responseContinuation = nil
+    }
+}
+
+actor SequencedTransport: HTTPTransport {
+    private(set) var requests: [URLRequest] = []
+    private var responses: [Int: CheckedContinuation<HTTPResponse, Error>] = [:]
+    private var startWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+
+    func send(_ request: URLRequest) async throws -> HTTPResponse {
+        let index = requests.count
+        requests.append(request)
+        return try await withCheckedThrowingContinuation { continuation in
+            responses[index] = continuation
+            for waiter in startWaiters.removeValue(forKey: index) ?? [] { waiter.resume() }
+        }
+    }
+
+    func waitForRequest(_ index: Int) async {
+        if requests.count > index { return }
+        await withCheckedContinuation { startWaiters[index, default: []].append($0) }
+    }
+
+    func releaseRequest(_ index: Int, response: HTTPResponse) {
+        responses.removeValue(forKey: index)?.resume(returning: response)
     }
 }
 

@@ -230,4 +230,113 @@ final class SpotifyPlaybackTests: XCTestCase, @unchecked Sendable {
         do { _ = try await client.playbackState(); XCTFail("Mock failure was ignored") }
         catch { XCTAssertEqual(error as? SpotifyFailure, .networkUnavailable) }
     }
+
+    func testNewSessionDoesNotJoinOldAccountPlaybackOrDisplayItsLateSuccess() async throws {
+        let oldCredentials = generatedCredentials()
+        let newCredentials = generatedCredentials()
+        let store = MemoryTokenStore(oldCredentials)
+        let tokenTransport = StubTransport([.response(try tokenResponse(for: newCredentials))])
+        let auth = SpotifyAuthManager(configuration: testConfiguration, store: store, transport: tokenTransport, now: { testDate })
+        try await auth.restore()
+        let transport = SequencedTransport()
+        let client = SpotifyPlaybackClient(authentication: auth, transport: transport, now: { testDate })
+        let oldRequest = Task { try await client.playbackState() }
+        await transport.waitForRequest(0)
+
+        try await auth.disconnect()
+        let authorizationURL = try await auth.beginAuthorization()
+        try await auth.completeAuthorization(callbackURL: callback(for: authorizationURL))
+        let newRequest = Task { try await client.playbackState() }
+        await transport.waitForRequest(1)
+        let oldItem: [String: Any] = ["id": "old-account-track", "name": "Earlier Account", "duration_ms": 60_000,
+                                      "artists": [["name": "Earlier Artist"]]]
+        await transport.releaseRequest(0, response: HTTPResponse(data: try playbackJSON(overrides: ["item": oldItem]), statusCode: 200))
+        do { _ = try await oldRequest.value; XCTFail("Old-account metadata was returned") }
+        catch { XCTAssertEqual(error as? SpotifyFailure, .requestCancelled) }
+
+        await transport.releaseRequest(1, response: HTTPResponse(data: try playbackJSON(), statusCode: 200))
+        let current = try await newRequest.value
+        XCTAssertEqual(current.track?.id, "synthetic-track")
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].value(forHTTPHeaderField: "Authorization"), "Bearer \(oldCredentials.accessToken)")
+        XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Authorization"), "Bearer \(newCredentials.accessToken)")
+        let stored = await store.value
+        XCTAssertEqual(stored, newCredentials)
+    }
+
+    func testOldSessionUnauthorizedResponseCannotRefreshNewAccount() async throws {
+        let newCredentials = generatedCredentials()
+        let store = MemoryTokenStore(generatedCredentials())
+        let tokenTransport = StubTransport([.response(try tokenResponse(for: newCredentials))])
+        let auth = SpotifyAuthManager(configuration: testConfiguration, store: store, transport: tokenTransport, now: { testDate })
+        try await auth.restore()
+        let transport = SequencedTransport()
+        let client = SpotifyPlaybackClient(authentication: auth, transport: transport, now: { testDate })
+        let oldRequest = Task { try await client.playbackState() }
+        await transport.waitForRequest(0)
+
+        try await auth.disconnect()
+        let authorizationURL = try await auth.beginAuthorization()
+        try await auth.completeAuthorization(callbackURL: callback(for: authorizationURL))
+        await transport.releaseRequest(0, response: HTTPResponse(data: Data(), statusCode: 401))
+        do { _ = try await oldRequest.value; XCTFail("Old-account rejection used the new authorization") }
+        catch { XCTAssertEqual(error as? SpotifyFailure, .requestCancelled) }
+        let tokenRequests = await tokenTransport.requests
+        XCTAssertEqual(tokenRequests.count, 1)
+        let stored = await store.value
+        XCTAssertEqual(stored, newCredentials)
+        let hasCredentials = await auth.hasCredentials
+        XCTAssertTrue(hasCredentials)
+    }
+
+    func testAuthorizationCompletionInvalidatesPlaybackCapturedWhileBrowserWasOpen() async throws {
+        let newCredentials = generatedCredentials()
+        let store = MemoryTokenStore(generatedCredentials())
+        let tokenTransport = StubTransport([.response(try tokenResponse(for: newCredentials))])
+        let auth = SpotifyAuthManager(configuration: testConfiguration, store: store, transport: tokenTransport, now: { testDate })
+        try await auth.restore()
+        let authorizationURL = try await auth.beginAuthorization()
+        let transport = SequencedTransport()
+        let client = SpotifyPlaybackClient(authentication: auth, transport: transport, now: { testDate })
+        let oldRequest = Task { try await client.playbackState() }
+        await transport.waitForRequest(0)
+
+        try await auth.completeAuthorization(callbackURL: callback(for: authorizationURL))
+        await transport.releaseRequest(0, response: HTTPResponse(data: try playbackJSON(), statusCode: 200))
+        do { _ = try await oldRequest.value; XCTFail("Previous credentials survived a completed account switch") }
+        catch { XCTAssertEqual(error as? SpotifyFailure, .requestCancelled) }
+        let stored = await store.value
+        XCTAssertEqual(stored, newCredentials)
+    }
+
+    func testOldSessionRetryRejectionCannotRevokeNewAccount() async throws {
+        let refreshedOldCredentials = generatedCredentials()
+        let newCredentials = generatedCredentials()
+        let store = MemoryTokenStore(generatedCredentials())
+        let tokenTransport = StubTransport([
+            .response(try tokenResponse(for: refreshedOldCredentials)), .response(try tokenResponse(for: newCredentials))
+        ])
+        let auth = SpotifyAuthManager(configuration: testConfiguration, store: store, transport: tokenTransport, now: { testDate })
+        try await auth.restore()
+        let transport = SequencedTransport()
+        let client = SpotifyPlaybackClient(authentication: auth, transport: transport, now: { testDate })
+        let oldRequest = Task { try await client.playbackState() }
+        await transport.waitForRequest(0)
+        await transport.releaseRequest(0, response: HTTPResponse(data: Data(), statusCode: 401))
+        await transport.waitForRequest(1)
+
+        try await auth.disconnect()
+        let authorizationURL = try await auth.beginAuthorization()
+        try await auth.completeAuthorization(callbackURL: callback(for: authorizationURL))
+        await transport.releaseRequest(1, response: HTTPResponse(data: Data(), statusCode: 401))
+        do { _ = try await oldRequest.value; XCTFail("Old-account retry revoked the new session") }
+        catch { XCTAssertEqual(error as? SpotifyFailure, .requestCancelled) }
+        let stored = await store.value
+        XCTAssertEqual(stored, newCredentials)
+        let state = await auth.state
+        XCTAssertEqual(state, .connected(expiresAt: newCredentials.expiresAt))
+        let tokenRequests = await tokenTransport.requests
+        XCTAssertEqual(tokenRequests.count, 2)
+    }
 }

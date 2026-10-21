@@ -65,7 +65,12 @@ final class BrowserAuthentication: NSObject, ASWebAuthenticationPresentationCont
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        anchor ?? ASPresentationAnchor()
+        // Authentication sets this window before starting the session and holds
+        // it until completion, so a detached fallback window is never needed.
+        guard let anchor else {
+            preconditionFailure("An authentication session requires its presentation window.")
+        }
+        return anchor
     }
 
     enum BrowserError: LocalizedError {
