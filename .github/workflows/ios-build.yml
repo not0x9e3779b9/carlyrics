@@ -1,0 +1,29 @@
+name: iOS Build
+on:
+  push:
+    branches: [main, feature/carplay-live-lyrics]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: ${{ vars.CARLYRICS_MACOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: ${{ vars.CARLYRICS_XCODE_PATH || '/Applications/Xcode_26.6.app/Contents/Developer' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode and SDK availability
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate --spec ios/project.yml --project ios
+      - name: Compile iPhone app and Live Activity without signing
+        run: >-
+          xcodebuild -project ios/CarLyrics.xcodeproj -scheme CarLyrics
+          -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build

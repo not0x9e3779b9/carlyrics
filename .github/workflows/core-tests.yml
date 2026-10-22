@@ -1,0 +1,19 @@
+name: Core Tests
+on:
+  push:
+    branches: [main, feature/carplay-live-lyrics]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  swift-tests:
+    runs-on: ubuntu-latest
+    container: swift:6.0-jammy
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Portable tests
+        run: swift test --parallel

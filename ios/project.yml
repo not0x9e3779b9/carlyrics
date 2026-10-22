@@ -1,0 +1,82 @@
+name: CarLyrics
+options:
+  minimumXcodeGenVersion: 2.44.0
+  deploymentTarget:
+    iOS: '26.0'
+configs:
+  Debug: debug
+  Release: release
+configFiles:
+  Debug: Project.xcconfig
+  Release: Project.xcconfig
+packages:
+  CarLyricsCore:
+    path: ..
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: '1'
+targets:
+  CarLyrics:
+    type: application
+    platform: iOS
+    sources:
+      - path: CarLyricsApp
+        excludes: ['*.plist']
+      - path: ApplePlatformServices
+      - path: Shared
+    info:
+      path: CarLyricsApp/Info.plist
+      properties:
+        CFBundleDisplayName: CarLyrics
+        CFBundleURLTypes:
+          - CFBundleURLName: Spotify callback
+            CFBundleURLSchemes: ['$(SPOTIFY_CALLBACK_SCHEME)']
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSSupportsLiveActivities: true
+        SpotifyClientID: $(SPOTIFY_CLIENT_ID)
+        SpotifyRedirectURI: $(SPOTIFY_REDIRECT_URI)
+        SpotifyCallbackScheme: $(SPOTIFY_CALLBACK_SCHEME)
+        SpotifyLyricsEnabled: $(SPOTIFY_LYRICS_ENABLED)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
+    dependencies:
+      - package: CarLyricsCore
+        product: LyricsCore
+      - package: CarLyricsCore
+        product: SpotifyIntegration
+      - target: CarLyricsLiveActivity
+        embed: true
+  CarLyricsLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: CarLyricsLiveActivity
+        excludes: ['*.plist']
+      - path: Shared
+    info:
+      path: CarLyricsLiveActivity/Info.plist
+      properties:
+        CFBundleDisplayName: CarLyrics Activity
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(WIDGET_BUNDLE_IDENTIFIER)
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+schemes:
+  CarLyrics:
+    build:
+      targets:
+        CarLyrics: all
+    run:
+      config: Debug
+    archive:
+      config: Release

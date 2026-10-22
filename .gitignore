@@ -6,12 +6,16 @@ build/
 *.xcuserstate
 xcuserdata/
 ios/CarLyrics.xcodeproj/
+ios/CarLyricsApp/Info.plist
+ios/CarLyricsLiveActivity/Info.plist
 Config.local.xcconfig
 .env
 .env.*
 !.env.example
 *.p12
 *.p8
+*.pfx
+*.key
 *.mobileprovision
 *.cer
 __pycache__/

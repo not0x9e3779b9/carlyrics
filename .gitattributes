@@ -3,3 +3,5 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.py text eol=lf
+*.xcconfig text eol=lf
+*.lrc text eol=lf
