@@ -24,7 +24,7 @@ Spotify playback and lyrics are separate subsystems. Spotify's published complia
 
 ## Development
 
-Windows supports source work and static checks. Run `swift test` if Swift is installed. A Swift toolchain will not be installed automatically. Apple frameworks require Xcode on macOS. Exact setup and build commands will be maintained in [development](docs/DEVELOPMENT.md) and the [Mac and device guide](docs/MAC_AND_DEVICE_TESTING.md).
+Windows supports source work and static checks. Run `swift test` if Swift is installed. A Swift toolchain will not be installed automatically. Apple frameworks require Xcode on macOS. Exact setup and build commands are provided below and in the [Mac and device guide](docs/MAC_AND_DEVICE_TESTING.md).
 
 ```powershell
 python scripts/validate_repository.py
@@ -77,6 +77,6 @@ Polling and local clock updates run only in the foreground. Backgrounding or una
 
 Tokens stay in device-only Keychain storage. Diagnostics omit tokens, callbacks, and server bodies. Local configuration, signing material, generated projects, and build products are ignored. Disconnect deletes local credentials; revoke account access separately in Spotify settings. Artwork is displayed without cropping and links to Spotify. There is no analytics or lyric scraping.
 
-Read the [specification](docs/PROJECT_SPEC.md), [architecture](docs/ARCHITECTURE.md), [development guide](docs/DEVELOPMENT.md), and [progress checklist](docs/IMPLEMENTATION_PLAN.md). Keep core code portable, extend only licensed providers, and test meaningful behavior changes. Keep the draft pull request unmerged pending a separate instruction.
+Read the [architecture](docs/ARCHITECTURE.md), [technical notes](docs/TECHNICAL_NOTES.md), and [device-testing guide](docs/MAC_AND_DEVICE_TESTING.md). Keep core code portable, extend only licensed providers, and test meaningful behavior changes. Keep the draft pull request unmerged pending a separate instruction.
 
 Only import lyrics you have the right to use. No lyrics service is scraped, and no commercial lyrics are bundled. Tokens belong in Keychain, never configuration, source, or preferences. A software license still needs to be selected.
