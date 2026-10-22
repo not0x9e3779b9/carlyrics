@@ -24,7 +24,7 @@ Spotify playback and lyrics are separate subsystems. Spotify's published complia
 
 ## Development
 
-Windows supports source work and static checks. Run `swift test` if Swift is installed. A Swift toolchain will not be installed automatically. Apple frameworks require Xcode on macOS. Exact setup and build commands are provided below and in the [Mac and device guide](docs/MAC_AND_DEVICE_TESTING.md).
+Windows supports source work and static checks. Run `swift test` if Swift is installed. A Swift toolchain will not be installed automatically. Apple frameworks require Xcode on macOS. See the [Mac and device guide](docs/MAC_AND_DEVICE_TESTING.md) for platform setup and testing requirements.
 
 ```powershell
 python scripts/validate_repository.py
