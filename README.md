@@ -22,4 +22,4 @@ Spotify playback and lyrics are separate subsystems. Spotify's published complia
 
 Windows supports source work and static checks. Run `swift test` if Swift is installed. A Swift toolchain will not be installed automatically. Apple frameworks require Xcode on macOS. See the [Mac and device guide](docs/MAC_AND_DEVICE_TESTING.md) for platform setup and testing requirements.
 
-Only import lyrics you have the right to use. No lyrics service is scraped, and no commercial lyrics are bundled. Tokens belong in Keychain, never configuration, source, or preferences. A software license still needs to be selected.
+Only import lyrics you have the right to use. No lyrics service is scraped, and no commercial lyrics are bundled. Tokens belong in Keychain, never configuration, source, or preferences.
